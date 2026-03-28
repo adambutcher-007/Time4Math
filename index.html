@@ -300,8 +300,13 @@
             75% { transform: translateX(8px); }
         }
         
+        /* MEMORY SCREEN - STRICT VIEWPORT FIT */
         .memory-screen {
-            padding-top: 20px;
+            padding: 15px 20px 20px;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
         }
         
         .memory-header {
@@ -309,8 +314,9 @@
             justify-content: space-between;
             width: 100%;
             max-width: 1100px;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             font-size: 1.6rem;
+            flex-shrink: 0;
         }
         
         .memory-header div {
@@ -321,16 +327,21 @@
         }
         
         #memory-grid {
+            flex: 1;
             display: grid;
             grid-template-columns: repeat(6, 1fr);
-            gap: 14px;
+            grid-template-rows: repeat(4, 1fr);
+            gap: 12px;
             max-width: 1100px;
             width: 100%;
-            padding: 20px;
+            margin: 0 auto;
+            align-self: stretch;
+            min-height: 0; /* CRITICAL: prevents child content from forcing overflow */
         }
         
         .memory-card {
             width: 100%;
+            height: 100%;
             aspect-ratio: 1 / 1;
             perspective: 1000px;
             cursor: pointer;
@@ -383,6 +394,16 @@
         @keyframes wiggle {
             0%, 100% { transform: rotate(-8deg); }
             50% { transform: rotate(8deg); }
+        }
+        
+        .memory-instruction {
+            margin-top: 12px;
+            text-align: center;
+            font-size: 1.25rem;
+            opacity: 0.85;
+            max-width: 1100px;
+            flex-shrink: 0;
+            line-height: 1.3;
         }
         
         .modal {
@@ -450,6 +471,29 @@
             align-items: center;
             gap: 10px;
             z-index: 9999;
+        }
+        
+        .sandbox-notice {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 64, 129, 0.9);
+            color: white;
+            padding: 10px 24px;
+            border-radius: 50px;
+            font-size: 1rem;
+            box-shadow: 0 8px 20px rgba(255, 64, 129, 0.4);
+            display: none;
+            z-index: 9999;
+            white-space: nowrap;
+        }
+        
+        /* Extra safety for very short viewports */
+        @media (max-height: 620px) {
+            .memory-header { font-size: 1.4rem; margin-bottom: 8px; }
+            .memory-instruction { font-size: 1.1rem; margin-top: 8px; }
+            #memory-grid { gap: 8px; }
         }
     </style>
 </head>
@@ -559,7 +603,7 @@
         
         <div id="memory-grid"></div>
         
-        <div style="margin-top: 30px; text-align: center; font-size: 1.3rem; opacity: 0.8;">
+        <div class="memory-instruction">
             Match the tasty treats! 🍒 = 5 pts • 🍰 = 10 pts • Everything else = 2 pts<br>
             Matches are FREE turns! Wrong matches cost 1 turn.
         </div>
@@ -595,10 +639,16 @@
         <span id="toast-text"></span>
     </div>
 
+    <!-- SANDBOX NOTICE -->
+    <div id="sandbox-notice" class="sandbox-notice">
+        ⚠️ Progress saving is disabled (browser sandbox mode). Your scores are saved for this session only.
+    </div>
+
     <script>
         // ====================== GLOBAL DATA ======================
         let currentUser = '';
         let usersData = {};
+        let storageAvailable = true;
         let currentSettings = {
             min: 1,
             max: 10,
@@ -634,16 +684,24 @@
         
         // ====================== STORAGE ======================
         function loadUsersData() {
-            const saved = localStorage.getItem('time4mathData');
-            if (saved) {
-                usersData = JSON.parse(saved);
-            } else {
+            try {
+                const saved = localStorage.getItem('time4mathData');
+                if (saved) usersData = JSON.parse(saved);
+                else usersData = {};
+                storageAvailable = true;
+            } catch (e) {
+                console.warn("%c🔒 localStorage blocked (sandbox mode). Using temporary memory only.", "color:#ff4081");
+                storageAvailable = false;
                 usersData = {};
+                document.getElementById('sandbox-notice').style.display = 'block';
             }
         }
         
         function saveUsersData() {
-            localStorage.setItem('time4mathData', JSON.stringify(usersData));
+            if (!storageAvailable) return;
+            try {
+                localStorage.setItem('time4mathData', JSON.stringify(usersData));
+            } catch (e) {}
         }
         
         function getOrCreateUser(name) {
@@ -651,12 +709,7 @@
             if (!usersData[key]) {
                 usersData[key] = {
                     lifetimeScore: 0,
-                    settings: {
-                        min: 1,
-                        max: 10,
-                        operations: ['+', '-', '×'],
-                        difficulty: 'easy'
-                    }
+                    settings: { min: 1, max: 10, operations: ['+', '-', '×'], difficulty: 'easy' }
                 };
             }
             return key;
@@ -677,9 +730,7 @@
             const text = document.getElementById('toast-text');
             text.innerHTML = message;
             toast.style.display = 'flex';
-            setTimeout(() => {
-                toast.style.display = 'none';
-            }, 2800);
+            setTimeout(() => { toast.style.display = 'none'; }, 2800);
         }
         
         // ====================== MATH PROBLEM GENERATOR ======================
@@ -704,16 +755,14 @@
                 answer = a * b;
                 display = `${a} × ${b} =`;
             } else if (op === '÷') {
-                // Ensure clean integer division
                 let attempts = 0;
                 do {
-                    b = Math.floor(Math.random() * (max - min + 1)) + min;
-                    if (b === 0) b = 1;
+                    b = Math.floor(Math.random() * (max - min + 1)) + min || 1;
                     const multiplier = Math.floor(Math.random() * 8) + 2;
                     a = b * multiplier;
                     attempts++;
                 } while ((a < min || a > max) && attempts < 30);
-                if (a < min || a > max) a = b * 2; // fallback
+                if (a < min || a > max) a = b * 2;
                 answer = a / b;
                 display = `${a} ÷ ${b} =`;
             }
@@ -751,7 +800,6 @@
             document.getElementById('answer-input').value = '';
             document.getElementById('feedback').innerHTML = '';
             
-            // Start timer
             timeLeft = difficultyTimes[currentSettings.difficulty];
             document.getElementById('time-left').textContent = timeLeft;
             document.getElementById('timer-fill').style.width = '100%';
@@ -763,9 +811,7 @@
                 const percent = (timeLeft / difficultyTimes[currentSettings.difficulty]) * 100;
                 document.getElementById('timer-fill').style.width = `${percent}%`;
                 
-                if (timeLeft <= 5) {
-                    document.getElementById('time-left').style.color = '#ff4081';
-                }
+                if (timeLeft <= 5) document.getElementById('time-left').style.color = '#ff4081';
                 
                 if (timeLeft <= 0) {
                     clearInterval(timerInterval);
@@ -773,10 +819,12 @@
                 }
             }, 1000);
             
-            // Focus input
-            setTimeout(() => {
-                document.getElementById('answer-input').focus();
-            }, 100);
+            setTimeout(() => document.getElementById('answer-input').focus(), 100);
+        }
+        
+        function advanceToNextProblem() {
+            currentProblemIndex++;
+            loadNextProblem();
         }
         
         function handleAnswerSubmit() {
@@ -790,7 +838,7 @@
                 correctMathCount++;
                 document.getElementById('correct-count').innerHTML = `✅ ${correctMathCount} correct`;
                 document.getElementById('feedback').innerHTML = `<span class="correct">🎉 PERFECT! +1 turn earned!</span>`;
-                setTimeout(() => loadNextProblem(), 1100);
+                setTimeout(advanceToNextProblem, 1100);
             } else {
                 handleWrongAnswer(false);
             }
@@ -798,26 +846,16 @@
         
         function handleWrongAnswer(timeout = false) {
             const problem = problems[currentProblemIndex];
-            let msg = '';
-            
-            if (timeout) {
-                msg = `<span class="wrong">⏰ Time’s up!<br>Correct answer was <strong>${problem.answer}</strong></span>`;
-            } else {
-                msg = `<span class="wrong">Oops! The answer was <strong>${problem.answer}</strong></span>`;
-            }
+            let msg = timeout 
+                ? `<span class="wrong">⏰ Time’s up!<br>Correct answer was <strong>${problem.answer}</strong></span>`
+                : `<span class="wrong">Oops! The answer was <strong>${problem.answer}</strong></span>`;
             
             document.getElementById('feedback').innerHTML = msg;
-            setTimeout(() => {
-                loadNextProblem();
-            }, 1600);
+            setTimeout(advanceToNextProblem, 1600);
         }
         
         function endFlashcards() {
-            turnsLeft = correctMathCount;
-            if (turnsLeft === 0) {
-                // No turns earned — still show a tiny memory round but immediately end
-                turnsLeft = 1;
-            }
+            turnsLeft = correctMathCount || 1;
             startMemoryGame();
         }
         
@@ -827,22 +865,18 @@
             matchedPairs = 0;
             document.getElementById('game-score').textContent = gameScore;
             document.getElementById('turns-left').textContent = turnsLeft;
-            document.getElementById('lifetime-score').textContent = usersData[currentUser].lifetimeScore;
+            document.getElementById('lifetime-score').textContent = usersData[currentUser] ? usersData[currentUser].lifetimeScore : 0;
             
-            // Pick 12 unique emojis
             const shuffledPool = shuffle(emojiPool);
             const selectedEmojis = shuffledPool.slice(0, 12);
             
-            // Create 24 cards (pairs)
             memoryCards = [];
             selectedEmojis.forEach(emoji => {
                 memoryCards.push({ emoji, id: Math.random(), matched: false });
                 memoryCards.push({ emoji, id: Math.random(), matched: false });
             });
-            
             memoryCards = shuffle(memoryCards);
             
-            // Render grid
             const grid = document.getElementById('memory-grid');
             grid.innerHTML = '';
             
@@ -850,16 +884,12 @@
                 const cardEl = document.createElement('div');
                 cardEl.className = 'memory-card';
                 cardEl.dataset.index = index;
-                
                 cardEl.innerHTML = `
                     <div class="memory-card-inner">
-                        <div class="memory-card-front">
-                            ${card.emoji}
-                        </div>
+                        <div class="memory-card-front">${card.emoji}</div>
                         <div class="memory-card-back"></div>
                     </div>
                 `;
-                
                 cardEl.addEventListener('click', handleCardClick);
                 grid.appendChild(cardEl);
             });
@@ -874,10 +904,8 @@
             const index = parseInt(cardEl.dataset.index);
             const card = memoryCards[index];
             
-            // Ignore if already matched or flipped
             if (card.matched || cardEl.classList.contains('flipped') || secondFlipped) return;
             
-            // Flip it
             cardEl.classList.add('flipped');
             
             if (!firstFlipped) {
@@ -885,15 +913,10 @@
                 return;
             }
             
-            // Second card
             secondFlipped = { index, card, element: cardEl };
             
-            // Check match
             if (firstFlipped.card.emoji === secondFlipped.card.emoji) {
-                // MATCH!
-                const points = firstFlipped.card.emoji === '🍒' ? 5 : 
-                              firstFlipped.card.emoji === '🍰' ? 10 : 2;
-                
+                const points = firstFlipped.card.emoji === '🍒' ? 5 : firstFlipped.card.emoji === '🍰' ? 10 : 2;
                 gameScore += points;
                 document.getElementById('game-score').textContent = gameScore;
                 
@@ -901,27 +924,17 @@
                 secondFlipped.card.matched = true;
                 matchedPairs++;
                 
-                // Keep them flipped
                 firstFlipped = null;
                 secondFlipped = null;
                 
-                // Check if board is complete
-                if (matchedPairs === 12) {
-                    setTimeout(endMemoryGame, 600);
-                }
+                if (matchedPairs === 12) setTimeout(endMemoryGame, 600);
             } else {
-                // MISMATCH — costs a turn
                 setTimeout(() => {
                     firstFlipped.element.classList.remove('flipped');
                     secondFlipped.element.classList.remove('flipped');
-                    
                     turnsLeft--;
                     document.getElementById('turns-left').textContent = turnsLeft;
-                    
-                    if (turnsLeft <= 0) {
-                        endMemoryGame();
-                    }
-                    
+                    if (turnsLeft <= 0) endMemoryGame();
                     firstFlipped = null;
                     secondFlipped = null;
                 }, 1100);
@@ -929,35 +942,27 @@
         }
         
         function endMemoryGame() {
-            // Add to lifetime
-            const user = usersData[currentUser];
-            user.lifetimeScore += gameScore;
-            saveUsersData();
-            
-            // Show modal
-            document.getElementById('modal-game-score').textContent = gameScore;
-            document.getElementById('modal-lifetime').textContent = user.lifetimeScore;
-            
-            // Fun title
-            const modalTitle = document.getElementById('modal-title');
-            if (gameScore > 30) {
-                modalTitle.textContent = '🍰 LEGENDARY! 🍰';
-            } else if (gameScore > 15) {
-                modalTitle.textContent = '🎉 Sweet Victory!';
-            } else {
-                modalTitle.textContent = 'Good job, math champ! 🏆';
+            if (currentUser && usersData[currentUser]) {
+                usersData[currentUser].lifetimeScore += gameScore;
+                saveUsersData();
             }
             
-            // Confetti!
-            launchConfetti();
+            const lifetimeNow = usersData[currentUser] ? usersData[currentUser].lifetimeScore : gameScore;
+            document.getElementById('modal-game-score').textContent = gameScore;
+            document.getElementById('modal-lifetime').textContent = lifetimeNow;
             
+            const modalTitle = document.getElementById('modal-title');
+            if (gameScore > 30) modalTitle.textContent = '🍰 LEGENDARY! 🍰';
+            else if (gameScore > 15) modalTitle.textContent = '🎉 Sweet Victory!';
+            else modalTitle.textContent = 'Good job, math champ! 🏆';
+            
+            launchConfetti();
             document.getElementById('end-modal').classList.add('active');
         }
         
         function launchConfetti() {
             const container = document.getElementById('confetti-container');
             container.innerHTML = '';
-            
             for (let i = 0; i < 80; i++) {
                 const confetti = document.createElement('div');
                 confetti.style.position = 'absolute';
@@ -969,15 +974,10 @@
                 container.appendChild(confetti);
                 
                 const duration = Math.random() * 2800 + 2200;
-                const angle = Math.random() * 80 - 40;
-                
                 confetti.animate([
                     { transform: `translateY(0) rotate(0deg)`, opacity: 1 },
-                    { transform: `translateY(${window.innerHeight + 100}px) rotate(${angle * 8}deg)`, opacity: 0 }
-                ], {
-                    duration: duration,
-                    easing: 'cubic-bezier(0.22, 1, 0.24, 1)'
-                });
+                    { transform: `translateY(${window.innerHeight + 100}px) rotate(${Math.random()*400 - 200}deg)`, opacity: 0 }
+                ], { duration, easing: 'cubic-bezier(0.22, 1, 0.24, 1)' });
                 
                 setTimeout(() => confetti.remove(), duration);
             }
@@ -992,7 +992,6 @@
         
         // ====================== SETTINGS UI ======================
         function setupSettingsListeners() {
-            // Difficulty buttons
             const diffBtns = document.querySelectorAll('.difficulty-btn');
             diffBtns.forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -1003,31 +1002,21 @@
                 });
             });
             
-            // Operation checkboxes
             const checkboxes = document.querySelectorAll('#ops-group input[type="checkbox"]');
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', checkGoButton);
-            });
+            checkboxes.forEach(cb => cb.addEventListener('change', checkGoButton));
             
-            // Range inputs
             document.getElementById('min-num').addEventListener('input', checkGoButton);
             document.getElementById('max-num').addEventListener('input', checkGoButton);
             
             document.getElementById('go-btn').addEventListener('click', () => {
-                // Save current settings
                 currentSettings.min = parseInt(document.getElementById('min-num').value) || 1;
                 currentSettings.max = parseInt(document.getElementById('max-num').value) || 10;
-                if (currentSettings.min >= currentSettings.max) {
-                    currentSettings.max = currentSettings.min + 5;
-                }
+                if (currentSettings.min >= currentSettings.max) currentSettings.max = currentSettings.min + 5;
                 
                 currentSettings.operations = [];
-                checkboxes.forEach(cb => {
-                    if (cb.checked) currentSettings.operations.push(cb.value);
-                });
+                checkboxes.forEach(cb => { if (cb.checked) currentSettings.operations.push(cb.value); });
                 
-                // Save to user profile
-                if (currentUser) {
+                if (currentUser && usersData[currentUser]) {
                     usersData[currentUser].settings = { ...currentSettings };
                     saveUsersData();
                 }
@@ -1038,12 +1027,12 @@
         }
         
         function checkGoButton() {
-            const checkboxes = document.querySelectorAll('#ops-group input[type="checkbox"]:checked');
+            const checked = document.querySelectorAll('#ops-group input[type="checkbox"]:checked');
             const minVal = parseInt(document.getElementById('min-num').value);
             const maxVal = parseInt(document.getElementById('max-num').value);
             const goBtn = document.getElementById('go-btn');
             
-            if (checkboxes.length > 0 && minVal < maxVal && minVal >= 1 && maxVal <= 1000) {
+            if (checked.length > 0 && minVal < maxVal && minVal >= 1 && maxVal <= 1000) {
                 goBtn.classList.add('active');
             } else {
                 goBtn.classList.remove('active');
@@ -1058,18 +1047,10 @@
             document.getElementById('max-num').value = saved.max || 10;
             
             const checkboxes = document.querySelectorAll('#ops-group input[type="checkbox"]');
-            checkboxes.forEach(cb => {
-                cb.checked = saved.operations ? saved.operations.includes(cb.value) : true;
-            });
+            checkboxes.forEach(cb => cb.checked = saved.operations ? saved.operations.includes(cb.value) : true);
             
-            // Difficulty
             const diffBtns = document.querySelectorAll('.difficulty-btn');
-            diffBtns.forEach(btn => {
-                if (btn.dataset.value === (saved.difficulty || 'easy')) {
-                    diffBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                }
-            });
+            diffBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.value === (saved.difficulty || 'easy')));
             
             currentSettings = { ...saved };
             checkGoButton();
@@ -1077,9 +1058,7 @@
         
         // ====================== EVENT LISTENERS ======================
         function initEventListeners() {
-            // Landing
-            const beginBtn = document.getElementById('begin-btn');
-            beginBtn.addEventListener('click', () => {
+            document.getElementById('begin-btn').addEventListener('click', () => {
                 const nameInput = document.getElementById('name-input').value.trim();
                 if (!nameInput) {
                     showToast('👋 Tell us your name first!');
@@ -1087,26 +1066,22 @@
                 }
                 currentUser = getOrCreateUser(nameInput);
                 saveUsersData();
-                
                 document.getElementById('welcome-name').innerHTML = `Welcome, <span style="color:#ffeb3b">${nameInput}!</span> 🎉`;
                 populateSettingsFromUser();
                 showScreen('settings');
             });
             
-            // Flashcard
             document.getElementById('submit-btn').addEventListener('click', handleAnswerSubmit);
             
-            const answerInput = document.getElementById('answer-input');
-            answerInput.addEventListener('keypress', (e) => {
+            document.getElementById('answer-input').addEventListener('keypress', e => {
                 if (e.key === 'Enter') handleAnswerSubmit();
             });
             
             document.getElementById('next-flash-btn').addEventListener('click', () => {
                 if (timerInterval) clearInterval(timerInterval);
-                loadNextProblem();
+                advanceToNextProblem();
             });
             
-            // Memory modal buttons
             document.getElementById('continue-same-btn').addEventListener('click', () => {
                 document.getElementById('end-modal').classList.remove('active');
                 startFlashcardRound();
@@ -1122,7 +1097,6 @@
                 showScreen('landing');
             });
             
-            // Export / Import
             document.getElementById('export-btn').addEventListener('click', () => {
                 const dataStr = JSON.stringify(usersData, null, 2);
                 const blob = new Blob([dataStr], { type: 'application/json' });
@@ -1135,46 +1109,28 @@
                 showToast('📤 Your progress was exported!');
             });
             
-            const importBtn = document.getElementById('import-btn');
             const importFile = document.getElementById('import-file');
+            document.getElementById('import-btn').addEventListener('click', () => importFile.click());
             
-            importBtn.addEventListener('click', () => importFile.click());
-            
-            importFile.addEventListener('change', (e) => {
+            importFile.addEventListener('change', e => {
                 const file = e.target.files[0];
                 if (!file) return;
-                
                 const reader = new FileReader();
-                reader.onload = function(ev) {
+                reader.onload = ev => {
                     try {
                         const imported = JSON.parse(ev.target.result);
-                        // Merge gracefully
                         Object.keys(imported).forEach(key => {
-                            if (!usersData[key]) {
-                                usersData[key] = imported[key];
-                            } else {
-                                // Keep highest lifetime score
-                                usersData[key].lifetimeScore = Math.max(usersData[key].lifetimeScore, imported[key].lifetimeScore || 0);
-                            }
+                            if (!usersData[key]) usersData[key] = imported[key];
+                            else usersData[key].lifetimeScore = Math.max(usersData[key].lifetimeScore, imported[key].lifetimeScore || 0);
                         });
                         saveUsersData();
                         showToast('📥 Progress imported successfully!');
-                        if (currentUser) {
-                            populateSettingsFromUser();
-                        }
+                        if (currentUser) populateSettingsFromUser();
                     } catch (err) {
                         showToast('⚠️ Oops! File was not valid.');
                     }
                 };
                 reader.readAsText(file);
-            });
-            
-            // Keyboard shortcut for fun
-            document.addEventListener('keydown', (e) => {
-                if (e.metaKey && e.key === 'k' && document.getElementById('memory').classList.contains('active')) {
-                    e.preventDefault();
-                    showToast('🍌 Secret banana boost! +5 points (just kidding)');
-                }
             });
         }
         
@@ -1183,9 +1139,7 @@
             loadUsersData();
             setupSettingsListeners();
             initEventListeners();
-            
-            // Easter egg in title
-            console.log('%c🍎 Time 4 Math ready for kids! Built as a single beautiful HTML file. Enjoy!', 'color:#ffeb3b; font-size:13px;');
+            console.log('%c🍎 Time 4 Math ready! (header + instruction now fully prevented from going off-screen)', 'color:#ffeb3b; font-size:13px;');
         };
     </script>
 </body>

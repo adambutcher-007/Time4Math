@@ -332,11 +332,14 @@
             grid-template-columns: repeat(6, 1fr);
             grid-template-rows: repeat(4, 1fr);
             gap: 12px;
-            max-width: 1100px;
             width: 100%;
+            /* Prevent right-edge overflow */
+            max-width: min(1100px, calc(100vw - 40px));
             margin: 0 auto;
             align-self: stretch;
-            min-height: 0; /* CRITICAL: prevents child content from forcing overflow */
+            min-height: 0;
+            /* Prevent bottom-edge overflow */
+            max-height: 100%;
         }
         
         .memory-card {
@@ -428,7 +431,7 @@
             border-radius: 30px;
             padding: 40px 50px;
             text-align: center;
-            max-width: 460px;
+            max-width: 520px;
             box-shadow: 0 0 60px #ffeb3b;
             animation: modalPop 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55);
         }
@@ -489,7 +492,6 @@
             white-space: nowrap;
         }
         
-        /* Extra safety for very short viewports */
         @media (max-height: 620px) {
             .memory-header { font-size: 1.4rem; margin-bottom: 8px; }
             .memory-instruction { font-size: 1.1rem; margin-top: 8px; }
@@ -508,7 +510,7 @@
             </div>
             <p style="font-size: 1.6rem; margin-bottom: 40px; color: #00e5ff;">Learn fast. Play sweet. 🧠🍓</p>
             
-            <input type="text" id="name-input" placeholder="What's your name, champ?">
+            <input type="text" id="name-input" placeholder="What's your name?">
             
             <div style="margin-top: 40px;">
                 <button id="begin-btn" style="font-size: 2rem; padding: 20px 60px;">BEGIN THE FUN! 🚀</button>
@@ -634,6 +636,49 @@
         </div>
     </div>
 
+    <!-- TRANSITION MODAL -->
+    <div id="transition-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="transition-title" style="color:#00ff9d; margin-bottom:10px;">🎉 You did it!</h2>
+            
+            <p style="font-size:1.9rem; margin-bottom:30px;">
+                You got <span id="final-correct" style="color:#ffeb3b; font-weight:700;"></span> out of 10 correct!
+            </p>
+            
+            <div style="display:flex; justify-content:center; align-items:center; gap:60px; margin:30px 0;">
+                <div style="text-align:center;">
+                    <div style="font-size:1.4rem; opacity:0.9;">Correct Answers</div>
+                    <span id="anim-correct" style="display:block; font-size:4rem; color:#ffeb3b; margin-top:8px;">8</span>
+                </div>
+                
+                <div id="transfer-arrow" style="font-size:3.5rem; color:#00e5ff; transition:transform 0.2s;">→</div>
+                
+                <div style="text-align:center;">
+                    <div style="font-size:1.4rem; opacity:0.9;">Memory Turns</div>
+                    <span id="anim-turns" style="display:block; font-size:4rem; color:#00ff9d; margin-top:8px;">0</span>
+                </div>
+            </div>
+            
+            <button id="play-memory-btn" class="go-btn" style="display:none; width:100%; margin-top:20px;">
+                Play Memory Game! 🎮
+            </button>
+        </div>
+    </div>
+
+    <!-- AUDIO ELEMENTS -->
+    <audio id="good-sound" src="good.mp3" preload="auto"></audio>
+    <audio id="bad-sound" src="bad.mp3" preload="auto"></audio>
+    <audio id="great-sound" src="great.mp3" preload="auto"></audio>
+    <audio id="ending-sound" src="ending.mp3" preload="auto"></audio>
+    <audio id="warp-sound" src="warp.mp3" preload="auto"></audio>
+    <audio id="done-sound" src="done.mp3" preload="auto"></audio>
+    <audio id="button-sound" src="button.mp3" preload="auto"></audio>
+    <audio id="transfer-sound" src="transfer.mp3" preload="auto"></audio>
+    <audio id="turn-sound" src="turn.mp3" preload="auto"></audio>
+    <audio id="countdown-sound" src="countdown.mp3" preload="auto"></audio>
+    <audio id="match-sound" src="match.mp3" preload="auto"></audio>
+    <audio id="welcome-sound" src="welcome.mp3" preload="auto"></audio>
+
     <!-- TOAST -->
     <div id="toast" class="toast">
         <span id="toast-text"></span>
@@ -668,6 +713,8 @@
         let turnsLeft = 0;
         let matchedPairs = 0;
         
+        let transitionCorrectCount = 0;
+        
         const emojiPool = [
             '🍓','🍒','🍎','🍅','🌶️','🍉','🍑','🍊','🥕','🥭','🍍','🍌','🌽','🍋','🍋‍🟩',
             '🍈','🍐','🫛','🥬','🫑','🍏','🥝','🥑','🥦','🫐','🍇','🍠','🫜','🥥','🍄‍🟫',
@@ -681,6 +728,34 @@
             hard: 4,
             expert: 2
         };
+        
+        // ====================== SOUND SYSTEM ======================
+        let sounds = {};
+        
+        function initSounds() {
+            sounds = {
+                good: document.getElementById('good-sound'),
+                bad: document.getElementById('bad-sound'),
+                great: document.getElementById('great-sound'),
+                ending: document.getElementById('ending-sound'),
+                warp: document.getElementById('warp-sound'),
+                done: document.getElementById('done-sound'),
+                button: document.getElementById('button-sound'),
+                transfer: document.getElementById('transfer-sound'),
+                turn: document.getElementById('turn-sound'),
+                countdown: document.getElementById('countdown-sound'),
+                match: document.getElementById('match-sound'),
+                welcome: document.getElementById('welcome-sound')
+            };
+        }
+        
+        function playSound(type) {
+            const audio = sounds[type];
+            if (audio) {
+                audio.currentTime = 0;
+                audio.play().catch(() => {});
+            }
+        }
         
         // ====================== STORAGE ======================
         function loadUsersData() {
@@ -805,6 +880,7 @@
             document.getElementById('timer-fill').style.width = '100%';
             
             if (timerInterval) clearInterval(timerInterval);
+            
             timerInterval = setInterval(() => {
                 timeLeft--;
                 document.getElementById('time-left').textContent = timeLeft;
@@ -812,6 +888,8 @@
                 document.getElementById('timer-fill').style.width = `${percent}%`;
                 
                 if (timeLeft <= 5) document.getElementById('time-left').style.color = '#ff4081';
+                
+                playSound('countdown');
                 
                 if (timeLeft <= 0) {
                     clearInterval(timerInterval);
@@ -838,6 +916,7 @@
                 correctMathCount++;
                 document.getElementById('correct-count').innerHTML = `✅ ${correctMathCount} correct`;
                 document.getElementById('feedback').innerHTML = `<span class="correct">🎉 PERFECT! +1 turn earned!</span>`;
+                playSound('good');
                 setTimeout(advanceToNextProblem, 1100);
             } else {
                 handleWrongAnswer(false);
@@ -851,12 +930,61 @@
                 : `<span class="wrong">Oops! The answer was <strong>${problem.answer}</strong></span>`;
             
             document.getElementById('feedback').innerHTML = msg;
+            playSound('bad');
             setTimeout(advanceToNextProblem, 1600);
         }
         
+        // ====================== TRANSITION MODAL ======================
+        function showTransitionModal(correct) {
+            transitionCorrectCount = correct;
+            
+            document.getElementById('final-correct').textContent = correct;
+            document.getElementById('anim-correct').textContent = correct;
+            document.getElementById('anim-turns').textContent = '0';
+            
+            const playBtn = document.getElementById('play-memory-btn');
+            playBtn.style.display = 'none';
+            playBtn.classList.remove('active');
+            
+            document.getElementById('transition-modal').classList.add('active');
+            
+            setTimeout(() => {
+                animateTransfer(correct);
+            }, 2000);
+        }
+        
+        function animateTransfer(initialCorrect) {
+            let remaining = initialCorrect;
+            let turns = 0;
+            
+            function step() {
+                if (remaining <= 0) {
+                    const playBtn = document.getElementById('play-memory-btn');
+                    playBtn.style.display = 'block';
+                    playBtn.classList.add('active');
+                    return;
+                }
+                
+                playSound('transfer');
+                
+                remaining--;
+                turns++;
+                
+                document.getElementById('anim-correct').textContent = remaining;
+                document.getElementById('anim-turns').textContent = turns;
+                
+                const arrow = document.getElementById('transfer-arrow');
+                arrow.style.transform = 'scale(1.6)';
+                setTimeout(() => { arrow.style.transform = 'scale(1)'; }, 180);
+                
+                setTimeout(step, 500);
+            }
+            
+            step();
+        }
+        
         function endFlashcards() {
-            turnsLeft = correctMathCount || 1;
-            startMemoryGame();
+            showTransitionModal(correctMathCount);
         }
         
         // ====================== MEMORY GAME ======================
@@ -907,6 +1035,7 @@
             if (card.matched || cardEl.classList.contains('flipped') || secondFlipped) return;
             
             cardEl.classList.add('flipped');
+            playSound('turn');
             
             if (!firstFlipped) {
                 firstFlipped = { index, card, element: cardEl };
@@ -916,9 +1045,17 @@
             secondFlipped = { index, card, element: cardEl };
             
             if (firstFlipped.card.emoji === secondFlipped.card.emoji) {
-                const points = firstFlipped.card.emoji === '🍒' ? 5 : firstFlipped.card.emoji === '🍰' ? 10 : 2;
+                const isSpecial = firstFlipped.card.emoji === '🍒' || firstFlipped.card.emoji === '🍰';
+                const points = isSpecial ? (firstFlipped.card.emoji === '🍒' ? 5 : 10) : 2;
+                
                 gameScore += points;
                 document.getElementById('game-score').textContent = gameScore;
+                
+                if (isSpecial) {
+                    playSound('great');
+                } else {
+                    playSound('match');
+                }
                 
                 firstFlipped.card.matched = true;
                 secondFlipped.card.matched = true;
@@ -956,6 +1093,7 @@
             else if (gameScore > 15) modalTitle.textContent = '🎉 Sweet Victory!';
             else modalTitle.textContent = 'Good job, math champ! 🏆';
             
+            playSound('ending');
             launchConfetti();
             document.getElementById('end-modal').classList.add('active');
         }
@@ -998,15 +1136,21 @@
                     diffBtns.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     currentSettings.difficulty = btn.dataset.value;
+                    playSound('button');
                     checkGoButton();
                 });
             });
             
             const checkboxes = document.querySelectorAll('#ops-group input[type="checkbox"]');
-            checkboxes.forEach(cb => cb.addEventListener('change', checkGoButton));
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', () => {
+                    playSound('button');
+                    checkGoButton();
+                });
+            });
             
-            document.getElementById('min-num').addEventListener('input', checkGoButton);
-            document.getElementById('max-num').addEventListener('input', checkGoButton);
+            document.getElementById('min-num').addEventListener('click', () => playSound('button'));
+            document.getElementById('max-num').addEventListener('click', () => playSound('button'));
             
             document.getElementById('go-btn').addEventListener('click', () => {
                 currentSettings.min = parseInt(document.getElementById('min-num').value) || 1;
@@ -1021,6 +1165,7 @@
                     saveUsersData();
                 }
                 
+                playSound('done');
                 showScreen('flashcard');
                 startFlashcardRound();
             });
@@ -1064,12 +1209,15 @@
                     showToast('👋 Tell us your name first!');
                     return;
                 }
+                playSound('done');
                 currentUser = getOrCreateUser(nameInput);
                 saveUsersData();
                 document.getElementById('welcome-name').innerHTML = `Welcome, <span style="color:#ffeb3b">${nameInput}!</span> 🎉`;
                 populateSettingsFromUser();
                 showScreen('settings');
             });
+            
+            document.getElementById('name-input').addEventListener('click', () => playSound('button'));
             
             document.getElementById('submit-btn').addEventListener('click', handleAnswerSubmit);
             
@@ -1079,7 +1227,15 @@
             
             document.getElementById('next-flash-btn').addEventListener('click', () => {
                 if (timerInterval) clearInterval(timerInterval);
+                playSound('bad');
                 advanceToNextProblem();
+            });
+            
+            document.getElementById('play-memory-btn').addEventListener('click', () => {
+                playSound('warp');
+                document.getElementById('transition-modal').classList.remove('active');
+                turnsLeft = transitionCorrectCount || 1;
+                startMemoryGame();
             });
             
             document.getElementById('continue-same-btn').addEventListener('click', () => {
@@ -1093,11 +1249,13 @@
             });
             
             document.getElementById('back-home-btn').addEventListener('click', () => {
+                playSound('welcome');
                 document.getElementById('end-modal').classList.remove('active');
                 showScreen('landing');
             });
             
             document.getElementById('export-btn').addEventListener('click', () => {
+                playSound('button');
                 const dataStr = JSON.stringify(usersData, null, 2);
                 const blob = new Blob([dataStr], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
@@ -1110,7 +1268,10 @@
             });
             
             const importFile = document.getElementById('import-file');
-            document.getElementById('import-btn').addEventListener('click', () => importFile.click());
+            document.getElementById('import-btn').addEventListener('click', () => {
+                playSound('button');
+                importFile.click();
+            });
             
             importFile.addEventListener('change', e => {
                 const file = e.target.files[0];
@@ -1137,9 +1298,11 @@
         // ====================== START THE GAME ======================
         window.onload = function() {
             loadUsersData();
+            initSounds();
             setupSettingsListeners();
             initEventListeners();
-            console.log('%c🍎 Time 4 Math ready! (header + instruction now fully prevented from going off-screen)', 'color:#ffeb3b; font-size:13px;');
+            
+            console.log('%c🍎 Time 4 Math ready! (memory grid now strictly fits viewport on resize)', 'color:#ffeb3b; font-size:13px;');
         };
     </script>
 </body>

@@ -301,13 +301,11 @@
         }
         
         /* MEMORY SCREEN - STRICT VIEWPORT FIT */
-        .memory-screen {
-            padding: 15px 20px 20px;
-            flex-direction: column;
-            height: 100vh;
-            box-sizing: border-box;
-            overflow: hidden;
-        }
+		.memory-screen {
+			padding: 15px 20px 20px;
+			justify-content: center;        /* helps with vertical centering */
+			gap: 12px;                      /* space between header, grid, and instruction */
+		}
         
         .memory-header {
             display: flex;
@@ -326,21 +324,24 @@
             box-shadow: 0 8px 20px rgba(0,0,0,0.2);
         }
         
-        #memory-grid {
-            flex: 1;
-            display: grid;
-            grid-template-columns: repeat(6, 1fr);
-            grid-template-rows: repeat(4, 1fr);
-            gap: 12px;
-            width: 100%;
-            /* Prevent right-edge overflow */
-            max-width: min(1100px, calc(100vw - 40px));
-            margin: 0 auto;
-            align-self: stretch;
-            min-height: 0;
-            /* Prevent bottom-edge overflow */
-            max-height: 100%;
-        }
+		#memory-grid {
+			display: grid;
+			grid-template-columns: repeat(6, 1fr);
+			grid-template-rows: repeat(4, 1fr);
+			gap: 12px;
+			
+			/* Center and constrain width only */
+			width: 100%;
+			max-width: min(1100px, 95vw);
+			margin: 0 auto;
+			
+			/* NEW: Let flexbox give it the exact remaining height */
+			flex: 1 1 auto;           /* grows to fill space after header + instruction */
+			min-height: 0;            /* allows shrinking on very short viewports */
+			
+			align-self: stretch;      /* fills full available width */
+			justify-self: center;
+		}
         
         .memory-card {
             width: 100%;
@@ -492,11 +493,21 @@
             white-space: nowrap;
         }
         
-        @media (max-height: 620px) {
-            .memory-header { font-size: 1.4rem; margin-bottom: 8px; }
-            .memory-instruction { font-size: 1.1rem; margin-top: 8px; }
-            #memory-grid { gap: 8px; }
-        }
+		@media (max-height: 620px) {
+			#memory-grid {
+				gap: 8px;   /* just keep the tighter gap; flex:1 handles the rest */
+			}
+		}
+		@media (max-width: 480px) {
+			.memory-card-front,
+			.memory-card-back {
+				font-size: 2.2rem;   /* was 3.2rem — prevents text clipping in tiny cells */
+			}
+			
+			.memory-instruction {
+				font-size: 1.1rem;
+			}
+		}
     </style>
 </head>
 <body>

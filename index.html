@@ -335,8 +335,8 @@
 			max-width: min(1100px, 95vw);
 			margin: 0 auto;
 			
-			/* NEW: Let flexbox give it the exact remaining height */
-			flex: 1 1 auto;           /* grows to fill space after header + instruction */
+			/* Don't let flexbox give it the exact remaining height, because some of the grid goes off the screen. */
+			flex: 0 0 auto;           /* grows to fill space after header + instruction */
 			min-height: 0;            /* allows shrinking on very short viewports */
 			
 			align-self: stretch;      /* fills full available width */
